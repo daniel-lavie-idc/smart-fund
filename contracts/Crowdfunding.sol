@@ -1,6 +1,7 @@
 pragma solidity 0.8.6;
-// Importing OpenZeppelin's SafeMath Implementation
+
 import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/math/SafeMath.sol';
+import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/ECDSA.sol';
 
 
 contract Crowdfunding {
@@ -13,32 +14,24 @@ contract Crowdfunding {
     event ProjectStarted(
         address contractAddress,
         address projectStarter,
-        string projectTitle,
-        string projectDesc,
         uint256 deadline,
         uint256 goalAmount
     );
 
-    /** @dev Function to start a new project.
-      * @param title Title of the project to be created
-      * @param description Brief description about the project
-      * @param durationInDays Project deadline in days
-      * @param amountToRaise Project goal in wei
-      */
     function startProject(
-        string calldata title,
-        string calldata description,
+        string memory projectId,
         uint durationInDays,
-        uint amountToRaise
+        uint amountToRaise,
+        address pk1,
+        address pk2,
+        address pk3
     ) external {
         uint raiseUntil = block.timestamp.add(durationInDays.mul(1 days));
-        Project newProject = new Project(payable(msg.sender), title, description, raiseUntil, amountToRaise);
+        Project newProject = new Project(projectId, payable(msg.sender), raiseUntil, amountToRaise, pk1, pk2, pk3);
         projects.push(newProject);
         emit ProjectStarted(
             address(newProject),
             msg.sender,
-            title,
-            description,
             raiseUntil,
             amountToRaise
         );
@@ -64,13 +57,15 @@ contract Project {
     }
 
     // State variables
+    string id;
     address payable public creator;
     uint public amountGoal; // required to reach at least this much, else everyone gets refund
     uint public completeAt;
     uint256 public currentBalance;
     uint public raiseBy;
-    string public title;
-    string public description;
+    address public pk1;
+    address public pk2;
+    address public pk3;
     State public state = State.Fundraising; // initialize on create
     mapping (address => uint) public contributions;
 
@@ -93,17 +88,21 @@ contract Project {
 
     constructor
     (
+        string memory projectId,
         address payable projectStarter,
-        string memory projectTitle,
-        string memory projectDesc,
         uint fundRaisingDeadline,
-        uint goalAmount
+        uint goalAmount,
+        address projectPK1,
+        address projectPK2,
+        address projectPK3
     ) public {
+        id = projectId;
         creator = projectStarter;
-        title = projectTitle;
-        description = projectDesc;
         amountGoal = goalAmount;
         raiseBy = fundRaisingDeadline;
+        pk1 = projectPK1;
+        pk2 = projectPK2;
+        pk3 = projectPK3;
         currentBalance = 0;
     }
 
@@ -120,18 +119,24 @@ contract Project {
     /** @dev Function to change the project state depending on conditions.
       */
     function checkIfFundingCompleteOrExpired() public {
-        if (currentBalance >= amountGoal) {
+        if (fundingCompleted()) {
             state = State.Successful;
-            payOut();
         } else if (block.timestamp > raiseBy)  {
             state = State.Expired;
         }
         completeAt = block.timestamp;
     }
-
-    /** @dev Function to give the received funds to project starter.
+    
+    function fundingCompleted() internal view returns (bool) {
+        return currentBalance >= amountGoal;
+    }
+    
+     /** @dev Withdraw funds. signature must be a valid signature on the project id by on of the pk's
       */
-    function payOut() internal inState(State.Successful) returns (bool) {
+    function withdraw(bytes memory signature) internal inState(State.Successful) returns (bool) {
+        require(msg.sender == creator);
+        require(fundingCompleted());
+        require(isSignedProperlyForWithdraw(signature));
         uint256 totalRaised = currentBalance;
         currentBalance = 0;
 
@@ -144,6 +149,16 @@ contract Project {
         }
 
         return false;
+    }
+    
+    function isSignedProperlyForWithdraw(bytes memory signature) internal view returns (bool) {
+        bytes32 hash = keccak256(abi.encodePacked(id));
+        address addressThatSigned = ECDSA.recover(hash, signature);
+        return (isAddressInOneOfThePks(addressThatSigned) && isAddressInOneOfThePks(msg.sender) && addressThatSigned == msg.sender);
+    }
+    
+    function isAddressInOneOfThePks(address a) internal view returns (bool) {
+        return (a == pk1 || a == pk2 || a == pk3);
     }
 
     /** @dev Function to retrieve donated amount when a project expires.
@@ -167,16 +182,12 @@ contract Project {
     function getDetails() public view returns 
     (
         address payable projectStarter,
-        string memory projectTitle,
-        string memory projectDesc,
         uint256 deadline,
         State currentState,
         uint256 currentAmount,
         uint256 goalAmount
     ) {
         projectStarter = creator;
-        projectTitle = title;
-        projectDesc = description;
         deadline = raiseBy;
         currentState = state;
         currentAmount = currentBalance;
