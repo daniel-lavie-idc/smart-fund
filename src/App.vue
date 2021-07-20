@@ -58,19 +58,19 @@
                     </v-flex>
                     <v-flex xs12 sm6>
                       <v-text-field
-                        label="pk1"
+                        label="pk1 (0x not required)"
                         v-model="newProject.pk1">
                       </v-text-field>
                     </v-flex>
                     <v-flex xs12 sm6>
                       <v-text-field
-                        label="pk2"
+                        label="pk2 (0x not required)"
                         v-model="newProject.pk2">
                       </v-text-field>
                     </v-flex>
                     <v-flex xs12 sm6>
                       <v-text-field
-                        label="pk3"
+                        label="pk3 (0x not required)"
                         v-model="newProject.pk3">
                       </v-text-field>
                     </v-flex>
@@ -188,10 +188,10 @@
                     Generate signature for withdrawing
                   </v-btn>
                   {{ project.mySignature }}
-                  <v-flex xs12 sm12
+                  <v-flex xs14 sm20
                       v-if="account == project.projectStarter && project.currentState == 2">
                       <v-text-field
-                        label="Enter signature from another authorized user"
+                        label="(with leading 0x) Paste signature from another authorized user"
                         v-model="signature">
                       </v-text-field>
                       <v-btn
@@ -257,7 +257,7 @@ export default {
         { color: 'primary', text: 'Ongoing' },
         { color: 'warning', text: 'Expired' },
         { color: 'success', text: 'Completed' },
-        { color: 'success', text: 'Withdrawn' }
+        { color: 'purple', text: 'Withdrawn' }
       ],
       projectData: [],
       newProject: { isLoading: false },
@@ -347,16 +347,18 @@ export default {
     },
 
     withdraw(index) {
+      if (this.signature === "") {
+        alert("You must provide a signature to withdraw");
+        return;
+      }
       const project  = this.projectData[index];
       project.isLoading = true;
       const projectId = project.projectId;
-      web3.eth.sign(web3.utils.keccak256(projectId), this.account).then(signature => {
-          project.contract.methods.withdraw(signature).send({
+      project.contract.methods.withdraw(this.signature).send({
           from: this.account,
         }).then(res => {
             alert("Funds withdrawn!");
         })
-      });
       project.isLoading = false;
     },
     
@@ -368,6 +370,7 @@ export default {
         this.projectData[index].isLoading = false;
       });
     },
+
     generateSignature(index) {
       const project  = this.projectData[index];
       const projectId = project.projectId;

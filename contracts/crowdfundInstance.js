@@ -1,7 +1,7 @@
 /* eslint-disable */
 import web3 from './web3';
 
-const address = '0x5831a9d76B92d16Cc79b54A62434399CA842Ab6F'
+const address = '0xA895D022271229f3F9788828442Ab5A43e0CaF58'
 const abi = [
     {
       "anonymous": false,
