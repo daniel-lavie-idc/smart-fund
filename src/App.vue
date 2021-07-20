@@ -245,7 +245,7 @@ import web3 from '../contracts/web3';
 import http from "./http-common";
 import postNewProject from "./api";
 
-const ASYNC_ISSUE_MESSAGE = "ASYNC ISSUES, PLEASE RELOAD THE PAGE";
+const ASYNC_ISSUE_MESSAGE = "If you are viewing this message, either you need to refresh the browser or the project does not exist on backend :(";
 
 export default {
   name: 'App',
@@ -288,7 +288,7 @@ export default {
                 projectInfo.projectTitle = res.data.title;
                 projectInfo.projectDesc = res.data.description;
                 }).
-              catch(e => {console.log(e);});
+              catch(e => {alert("A project exist on the contract but does not exist on the backend, you can ignore this project and create a new one for testing");});
             projectInfo.isLoading = false;
             projectInfo.contract = projectInst;
             this.projectData.push(projectInfo);
