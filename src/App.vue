@@ -181,12 +181,28 @@
                   <v-btn
                     class="mt-3"
                     color="amber darken-1 white--text"
-                    v-if="project.currentState == 2 && account == project.projectStarter"
-                    @click="withdraw(index)"
+                    v-if="project.currentState == 2 && account != project.projectStarter"
+                    @click="generateSignature(index)"
                     :loading="project.isLoading"
                   >
-                    Withdraw
+                    Generate signature for withdrawing
                   </v-btn>
+                  {{ project.mySignature }}
+                  <v-flex xs12 sm12
+                      v-if="account == project.projectStarter && project.currentState == 2">
+                      <v-text-field
+                        label="Enter signature from another authorized user"
+                        v-model="signature">
+                      </v-text-field>
+                      <v-btn
+                      class="mt-3"
+                      color="amber darken-1 white--text"
+                      @click="withdraw(index)"
+                      :loading="project.isLoading"
+                      >
+                        Withdraw
+                      </v-btn>
+                  </v-flex>
                 </v-flex>
                 <v-flex class="d-flex ml-3" xs12 sm6 md3>
                   <v-btn
@@ -229,6 +245,8 @@ import web3 from '../contracts/web3';
 import http from "./http-common";
 import postNewProject from "./api";
 
+const ASYNC_ISSUE_MESSAGE = "ASYNC ISSUES, PLEASE RELOAD THE PAGE";
+
 export default {
   name: 'App',
   data() {
@@ -239,9 +257,11 @@ export default {
         { color: 'primary', text: 'Ongoing' },
         { color: 'warning', text: 'Expired' },
         { color: 'success', text: 'Completed' },
+        { color: 'success', text: 'Withdrawn' }
       ],
       projectData: [],
       newProject: { isLoading: false },
+      signature: ""
     };
   },
   mounted() {
@@ -252,13 +272,16 @@ export default {
     });
   },
   methods: {
+
     getProjects() {
       crowdfundInstance.methods.returnAllProjects().call().then((projects) => {
         projects.forEach((projectAddress) => {
           const projectInst = crowdfundProject(projectAddress);
           projectInst.methods.getDetails().call().then((projectData) => {
             const projectInfo = projectData;
-            const projectId = projectInfo.id;
+            const projectId = projectInfo.projectId;
+            projectInfo.projectTitle = ASYNC_ISSUE_MESSAGE;
+            projectInfo.projectDesc = ASYNC_ISSUE_MESSAGE;
             http.get(`/projects/${projectId}`).
               then((res) => {
                 console.log(`get by id returned title: ${res.data.title}`);
@@ -273,10 +296,14 @@ export default {
         });
       });
     },
+
     startProject() {
       this.newProject.isLoading = true;
-      postNewProject(this.newProject.title, this.newProject.description).then((projectId) => {
-        crowdfundInstance.methods.startProject(
+      postNewProject(this.newProject.title, this.newProject.description).then((projectId) => this.callContractStratProject(projectId))
+    },
+
+    callContractStratProject(projectId) {
+      crowdfundInstance.methods.startProject(
         projectId,
         this.newProject.duration,
         web3.utils.toWei(this.newProject.amountGoal, 'ether'),
@@ -294,9 +321,8 @@ export default {
           this.startProjectDialog = false;
           this.newProject = { isLoading: false };
         });
-      }
-    )  
     },
+
     fundProject(index) {
       if (!this.projectData[index].fundAmount) {
         return;
@@ -319,6 +345,21 @@ export default {
         }
       });
     },
+
+    withdraw(index) {
+      const project  = this.projectData[index];
+      project.isLoading = true;
+      const projectId = project.projectId;
+      web3.eth.sign(web3.utils.keccak256(projectId), this.account).then(signature => {
+          project.contract.methods.withdraw(signature).send({
+          from: this.account,
+        }).then(res => {
+            alert("Funds withdrawn!");
+        })
+      });
+      project.isLoading = false;
+    },
+    
     getRefund(index) {
       this.projectData[index].isLoading = true;
       this.projectData[index].contract.methods.getRefund().send({
@@ -326,6 +367,11 @@ export default {
       }).then(() => {
         this.projectData[index].isLoading = false;
       });
+    },
+    generateSignature(index) {
+      const project  = this.projectData[index];
+      const projectId = project.projectId;
+      web3.eth.sign(web3.utils.keccak256(projectId), this.account).then(signature => { alert(signature); });
     },
   },
 };

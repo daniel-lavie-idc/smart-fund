@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.6;
 
-import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/math/SafeMath.sol';
-import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/ECDSA.sol';
+import './SafeMath.sol';
+import './ECDSA.sol';
 
 
 contract Crowdfunding {
@@ -53,11 +54,12 @@ contract Project {
     enum State {
         Fundraising,
         Expired,
-        Successful
+        Successful,
+        Withdrawn
     }
 
     // State variables
-    string id;
+    string public id;
     address payable public creator;
     uint public amountGoal; // required to reach at least this much, else everyone gets refund
     uint public completeAt;
@@ -95,7 +97,7 @@ contract Project {
         address projectPK1,
         address projectPK2,
         address projectPK3
-    ) public {
+    ) {
         id = projectId;
         creator = projectStarter;
         amountGoal = goalAmount;
@@ -133,14 +135,15 @@ contract Project {
     
      /** @dev Withdraw funds. signature must be a valid signature on the project id by on of the pk's
       */
-    function withdraw(bytes memory signature) internal inState(State.Successful) returns (bool) {
-        require(msg.sender == creator);
-        require(fundingCompleted());
-        require(isSignedProperlyForWithdraw(signature));
+    function withdraw(bytes memory signature) public inState(State.Successful) returns (bool) {
+        // require(msg.sender == creator, "withdraw is only available for the creator of the project");
+        require(fundingCompleted(), "Funding is not complete yet");
+        require(isSignedProperlyForWithdraw(signature), "The transaction has signatures issues");
         uint256 totalRaised = currentBalance;
         currentBalance = 0;
 
         if (creator.send(totalRaised)) {
+            state = State.Withdrawn;
             emit CreatorPaid(creator);
             return true;
         } else {
@@ -154,11 +157,23 @@ contract Project {
     function isSignedProperlyForWithdraw(bytes memory signature) internal view returns (bool) {
         bytes32 hash = keccak256(abi.encodePacked(id));
         address addressThatSigned = ECDSA.recover(hash, signature);
-        return (isAddressInOneOfThePks(addressThatSigned) && isAddressInOneOfThePks(msg.sender) && addressThatSigned == msg.sender);
+        address transactionSignature = msg.sender;
+
+        // require(isAddressInOneOfThePks(addressThatSigned), "internal signature is incorrect");
+        // require(isAddressInOneOfThePks(msg.sender), "external signature is incorrect");
+        require(isAddressesInTwoOfThePks(addressThatSigned, transactionSignature), "One of the 2 given signatures is incorrect");
+        return true;
     }
     
-    function isAddressInOneOfThePks(address a) internal view returns (bool) {
-        return (a == pk1 || a == pk2 || a == pk3);
+    function isAddressesInTwoOfThePks(address a, address b) internal view returns (bool) {
+        if (a == pk1) {
+            return (b == pk2 || b == pk3);
+        } else if (a == pk2) {
+            return (b == pk1 || b == pk3);
+        } else if (a == pk3) {
+            return (b == pk1 || b == pk2);
+        }
+        return false;
     }
 
     /** @dev Function to retrieve donated amount when a project expires.
@@ -181,12 +196,14 @@ contract Project {
 
     function getDetails() public view returns 
     (
+        string memory projectId,
         address payable projectStarter,
         uint256 deadline,
         State currentState,
         uint256 currentAmount,
         uint256 goalAmount
     ) {
+        projectId = id;
         projectStarter = creator;
         deadline = raiseBy;
         currentState = state;
