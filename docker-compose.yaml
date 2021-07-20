@@ -1,0 +1,32 @@
+version: "3"
+services:
+  backend:
+    container_name: backend 
+    build:
+        context: ./backend
+    depends_on:
+      - db  
+    volumes:
+      - ./backend:/usr/app
+      - /usr/app/node_modules
+    environment:  
+      - MONGO_URL=mongodb://db:27017/crowdfunding_db
+      - APP_PORT=8080
+    ports: ['8080:8080'] 
+
+  db:
+    container_name: db
+    image: mongo:4.0
+    restart: always
+
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - '8081:8081'
+    environment:  
+      - BACKEND_URL=http://localhost:8080/api
